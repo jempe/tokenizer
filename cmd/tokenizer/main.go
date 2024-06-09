@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
@@ -19,6 +20,7 @@ func main() {
 	emitTokens := flag.Bool("tokens", false, "if true will output the tokens instead of the token ids")
 	listModels := flag.Bool("list-models", false, "list all supported models")
 	listEncodings := flag.Bool("list-encodings", false, "list all supported encoding formats")
+	countTokensFromStdin := flag.Bool("count", false, "count the number of tokens in the input text from stdin")
 	flag.Parse()
 
 	if *listModels {
@@ -37,13 +39,21 @@ func main() {
 	}
 
 	// either encode or decode operations should be requested
-	if (*encode != "" && *decode != "") || (*encode == "" && *decode == "") {
+	if (*encode != "" && *decode != "" && *countTokensFromStdin) || (*encode == "" && *decode == "" && !*countTokensFromStdin) {
 		flag.PrintDefaults()
 	}
 
 	codec := getCodec(*model, *encoding)
 
-	if *encode != "" {
+	if *countTokensFromStdin {
+		data, err := ioutil.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Println("Error reading input:", err)
+			os.Exit(1)
+		}
+
+		countTokens(codec, string(data))
+	} else if *encode != "" {
 		encodeInput(codec, *encode, *emitTokens)
 	} else {
 		decodeInput(codec, *decode+" "+strings.Join(flag.Args(), " "))
@@ -64,6 +74,15 @@ func getCodec(model, encoding string) tokenizer.Codec {
 		}
 		return c
 	}
+}
+
+func countTokens(codec tokenizer.Codec, text string) {
+	ids, _, err := codec.Encode(text)
+	if err != nil {
+		log.Fatalf("error encoding: %v", err)
+	}
+
+	fmt.Println(len(ids))
 }
 
 func encodeInput(codec tokenizer.Codec, text string, wantTokens bool) {
